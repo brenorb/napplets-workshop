@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Breakoutlet — a responsive Breakout game with a global Nostr high score."
+    />
+    <title>Breakoutlet</title>
+  </head>
+  <body>
+    <main id="app" class="app-shell">
+      <header class="masthead">
+        <div>
+          <p class="eyebrow">Arcade, signed by Nostr</p>
+          <h1>Breakoutlet</h1>
+        </div>
+        <p class="tagline">Break every block. Own the board.</p>
+      </header>
+
+      <section class="game-layout" aria-label="Breakoutlet game and leaderboard">
+        <article class="game-card">
+          <div class="hud" aria-label="Current game statistics">
+            <div><span>Score</span><strong id="score">0</strong></div>
+            <div><span>Best</span><strong id="best">0</strong></div>
+            <div><span>Level</span><strong id="level">1</strong></div>
+            <div><span>Lives</span><strong id="lives">3</strong></div>
+          </div>
+
+          <div class="canvas-frame">
+            <canvas
+              id="game"
+              width="720"
+              height="800"
+              tabindex="0"
+              aria-label="Breakout game. Focus the game and use left and right arrows, A and D, or pointer movement."
+            ></canvas>
+            <div id="gameMessage" class="game-message" aria-live="polite">
+              <p id="messageKicker">Ready?</p>
+              <h2 id="messageTitle">Clear the wall</h2>
+              <p id="messageBody">Move with your pointer or the arrow keys.</p>
+            </div>
+          </div>
+
+          <div class="game-controls">
+            <button id="leftButton" class="move-button" type="button" aria-label="Move paddle left">←</button>
+            <button id="launchButton" class="launch-button" type="button">Launch ball</button>
+            <button id="rightButton" class="move-button" type="button" aria-label="Move paddle right">→</button>
+          </div>
+          <output id="gameStatus" class="game-status" aria-live="polite">Press Launch ball to begin.</output>
+        </article>
+
+        <aside class="leaderboard-card" aria-labelledby="leaderboard-title">
+          <div class="leaderboard-heading">
+            <div>
+              <p class="eyebrow">Global high score</p>
+              <h2 id="leaderboard-title">Hall of blocks</h2>
+            </div>
+            <button id="refreshButton" class="icon-button" type="button" aria-label="Refresh leaderboard">↻</button>
+          </div>
+          <p id="identityStatus" class="identity-status">Checking player identity…</p>
+          <ol id="leaderboard" class="leaderboard" aria-live="polite">
+            <li class="leaderboard-empty">Loading the world’s best breakers…</li>
+          </ol>
+          <p id="leaderboardStatus" class="leaderboard-status">Scores are signed and published through your shell.</p>
+          <div class="score-protocol">
+            <span class="live-dot" aria-hidden="true"></span>
+            Shared board · NIP-78
+          </div>
+        </aside>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "sourceDir": ".",
+  "relays": [
+    "wss://nos.lol"
+  ],
+  "blossomServers": [],
+  "defaultTarget": "named",
+  "named": [
+    "breakoutlet"
+  ],
+  "discover": {
+    "enabled": true,
+    "roots": [
+      "."
+    ]
+  },
+  "signing": {
+    "mode": "interactive"
+  },
+  "conformance": {
+    "command": "napplet-conformance"
+  },
+  "paja": {
+    "command": "kehto"
+  },
+  "metadata": {
+    "name": "breakoutlet",
+    "title": "Breakoutlet",
+    "description": "Breakout with a global Nostr high score",
+    "archetypes": []
+  }
+}
