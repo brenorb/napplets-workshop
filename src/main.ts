@@ -46,6 +46,12 @@ type ScorePayload = {
   playedAt: number;
 };
 
+type FinishedRun = {
+  id: number;
+  pubkey: string;
+  payload: ScorePayload;
+};
+
 type LeaderboardEntry = ScorePayload & {
   pubkey: string;
   createdAt: number;
@@ -117,11 +123,12 @@ let bestScore = 0;
 let level = 1;
 let lives = 3;
 let bricksBroken = 0;
+let runId = 0;
 let currentPubkey = '';
-let globalPersonalBest = 0;
 let leaderboardEntries: LeaderboardEntry[] = [];
 let leaderboardLoading = false;
-let scorePublishing = false;
+let scoreQueue = Promise.resolve();
+const publishedBestByAuthor = new Map<string, number>();
 
 const paddle = {
   x: GAME_WIDTH / 2 - 62,
@@ -279,6 +286,7 @@ function resetBall(direction = 1): void {
 }
 
 function resetRun(): void {
+  runId += 1;
   score = 0;
   level = 1;
   lives = 3;
@@ -415,7 +423,7 @@ function updateGame(deltaSeconds: number): void {
       elements.launchButton.textContent = 'New run';
       setMessage('Run complete', formatScore(score), currentPubkey ? 'Checking your global best…' : 'Connect an identity to join the global board.');
       setGameStatus('Run complete.');
-      void finishRun();
+      finishRun();
     }
   }
 }
@@ -638,8 +646,8 @@ async function loadLeaderboard(): Promise<void> {
       { kinds: [SCORE_KIND], '#d': [SCORE_D_TAG], limit: 100 },
       { relays: SCOREBOARD_RELAYS, limit: 100, timeoutMs: 6000 },
     );
+    if (result.error) throw new Error(result.error);
     leaderboardEntries = normalizeLeaderboard(result.events);
-    globalPersonalBest = leaderboardEntries.find((entry) => entry.pubkey === currentPubkey)?.score ?? 0;
     elements.leaderboardStatus.textContent = result.incomplete
       ? `Showing ${leaderboardEntries.length} verified score${leaderboardEntries.length === 1 ? '' : 's'} · partial relay result`
       : `${leaderboardEntries.length} verified player${leaderboardEntries.length === 1 ? '' : 's'} on the shared board`;
@@ -653,20 +661,53 @@ async function loadLeaderboard(): Promise<void> {
   }
 }
 
-async function publishHighScore(): Promise<void> {
-  if (!currentPubkey || score <= globalPersonalBest || scorePublishing || !runtime.napplet?.outbox) return;
-  scorePublishing = true;
-  elements.leaderboardStatus.textContent = 'Signing your new personal best…';
+async function readPersonalBest(pubkey: string): Promise<number | null> {
+  try {
+    const result = await outbox.query(
+      { kinds: [SCORE_KIND], authors: [pubkey], '#d': [SCORE_D_TAG], limit: 1 },
+      { relays: SCOREBOARD_RELAYS, limit: 1, timeoutMs: 6000 },
+    );
+    if (result.error || result.incomplete) return null;
+    if (result.events.length === 0) return 0;
+    return normalizeLeaderboard(result.events).find((entry) => entry.pubkey === pubkey)?.score ?? null;
+  } catch {
+    return null;
+  }
+}
 
-  const payload: ScorePayload = {
-    version: 1,
-    score,
-    level,
-    bricks: bricksBroken,
-    playedAt: Math.floor(Date.now() / 1000),
+async function publishHighScore({ id, pubkey, payload }: FinishedRun): Promise<void> {
+  const showResult = (kicker: string, body: string): void => {
+    if (phase === 'gameover' && runId === id) setMessage(kicker, formatScore(payload.score), body);
   };
+  const identityChanged = 'The active identity changed. This run stays local.';
+  if (currentPubkey !== pubkey) {
+    showResult('Run complete', identityChanged);
+    return;
+  }
+
+  const previousBest = await readPersonalBest(pubkey);
+  if (currentPubkey !== pubkey) {
+    showResult('Run complete', identityChanged);
+    return;
+  }
+  if (previousBest === null) {
+    showResult('Run complete', 'Could not check your global best. This run stays local.');
+    elements.leaderboardStatus.textContent = 'Personal best unavailable. No score was published.';
+    return;
+  }
+  const best = Math.max(previousBest, publishedBestByAuthor.get(pubkey) ?? 0);
+  if (payload.score <= best) {
+    showResult('Run complete', `Your global best is ${formatScore(best)}.`);
+    return;
+  }
 
   try {
+    const activePubkey = await identity.getPublicKey();
+    if (activePubkey !== pubkey || currentPubkey !== pubkey) {
+      showResult('Run complete', identityChanged);
+      return;
+    }
+    elements.leaderboardStatus.textContent = 'Signing your new personal best…';
     const result = await outbox.publish(
       {
         kind: SCORE_KIND,
@@ -675,34 +716,41 @@ async function publishHighScore(): Promise<void> {
           ['d', SCORE_D_TAG],
           ['t', 'breakoutlet'],
         ],
-        created_at: payload.playedAt,
+        created_at: Math.floor(Date.now() / 1000),
       },
       { relays: SCOREBOARD_RELAYS },
     );
     if (!result.ok) throw new Error(result.error ?? 'Score publish failed');
-    globalPersonalBest = score;
-    setMessage('New personal best', formatScore(score), 'Signed and published to the global board.');
+    if (result.event && result.event.pubkey !== pubkey) throw new Error('Score signed by a different identity');
+    publishedBestByAuthor.set(pubkey, payload.score);
+    showResult('New personal best', 'Signed and published to the global board.');
     elements.leaderboardStatus.textContent = 'New personal best published.';
-    await loadLeaderboard();
+    void loadLeaderboard();
   } catch {
-    setMessage('Score saved locally', formatScore(score), 'The shell could not publish this run. Try refreshing the board later.');
-    elements.leaderboardStatus.textContent = 'Could not publish this run. Your local best is safe.';
-  } finally {
-    scorePublishing = false;
+    showResult('Run complete', 'The shell did not confirm publication of this run.');
+    elements.leaderboardStatus.textContent = 'Could not confirm this run on the global board.';
   }
 }
 
-async function finishRun(): Promise<void> {
+function finishRun(): void {
   if (score > bestScore) {
     bestScore = score;
-    await persistBestScore();
+    void persistBestScore();
     updateHud();
   }
-  if (currentPubkey && score > globalPersonalBest) {
-    await publishHighScore();
-  } else if (currentPubkey) {
-    setMessage('Run complete', formatScore(score), `Your global best is ${formatScore(globalPersonalBest)}.`);
-  }
+  if (!currentPubkey || !runtime.napplet?.outbox) return;
+  const run: FinishedRun = {
+    id: runId,
+    pubkey: currentPubkey,
+    payload: {
+      version: 1,
+      score,
+      level,
+      bricks: bricksBroken,
+      playedAt: Math.floor(Date.now() / 1000),
+    },
+  };
+  scoreQueue = scoreQueue.then(() => publishHighScore(run));
 }
 
 async function refreshIdentity(): Promise<void> {
@@ -718,7 +766,6 @@ async function refreshIdentity(): Promise<void> {
     elements.identityStatus.textContent = currentPubkey
       ? `Playing as ${shortPubkey(currentPubkey)}`
       : 'Playing locally · connect an identity to publish scores';
-    globalPersonalBest = leaderboardEntries.find((entry) => entry.pubkey === currentPubkey)?.score ?? 0;
     renderLeaderboard();
   } catch {
     currentPubkey = '';
@@ -734,7 +781,6 @@ function subscribeToIdentity(): void {
       elements.identityStatus.textContent = pubkey
         ? `Playing as ${shortPubkey(pubkey)}`
         : 'Playing locally · connect an identity to publish scores';
-      globalPersonalBest = leaderboardEntries.find((entry) => entry.pubkey === pubkey)?.score ?? 0;
       renderLeaderboard();
     });
   } catch {

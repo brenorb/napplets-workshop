@@ -9,6 +9,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "type-check": "tsc --noEmit",
     "verify": "pnpm type-check && pnpm build",
+    "test": "node --experimental-vm-modules --test",
     "test:conformance": "pnpm build && napplet-conformance ./dist",
     "test:conformance:ui": "napplet-conformance --ui . --exec \"vite build --watch\""
   },
