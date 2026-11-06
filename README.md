@@ -9,7 +9,9 @@ global, signed Nostr high-score board.
   arrows and A/D while the canvas is focused.
 - Launch, pause, or resume with the main button. Space and Enter work while the
   canvas is focused.
-- A connected identity automatically publishes only a new personal best.
+- A connected identity automatically publishes a new personal best after a
+  successful check for that player's record. The run stays local if the check
+  fails or returns partial results.
 - The game remains playable when optional identity or storage domains are absent;
   the leaderboard requires the manifest-declared `outbox` domain.
 
@@ -32,6 +34,7 @@ NAP-THEME with an explicit fallback palette.
 ```bash
 pnpm install
 pnpm verify
+pnpm test
 pnpm test:conformance
 ```
 
