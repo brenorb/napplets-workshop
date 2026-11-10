@@ -20,7 +20,7 @@
     "@napplet/conformance-cli": "^0.2.1",
     "@napplet/vite-plugin": "^0.8.1",
     "typescript": "^5.9.3",
-    "vite": "^6.4.2",
+    "vite": "^6.4.5",
     "vite-plugin-singlefile": "^2.3.3"
   },
   "packageManager": "pnpm@10.8.0",
