@@ -17,11 +17,12 @@ export JAVA=/path/to/java                          # Java 11 or later
 bash scripts/verification/check-model.sh .claude/skills/verify-high-score/model/HighScore.tla
 bash scripts/verification/check-model.sh .claude/skills/verify-high-score/model/HighScore.tla --mutant
 corepack pnpm type-check
+npm test
 ```
 
 The model must pass (11 distinct states). The `--mutant` run replays the code before commit 302ea03 and must report `BoardKeepsBest` violated. The path: the leaderboard did not return the player's 3, a run of 1 beats the assumed 0, and the publish replaces 3. Read every TLC result with the pstack `/statechart` skill.
 
-The repository has no unit-test harness, so this path has not been replayed on the real code. To replay it by hand, run the napplet in a shell whose `outbox.query` returns `incomplete: true`, finish a low run, and check that no publish is sent.
+`npm test` replays that path on the real publish rule, `shouldPublishScore` in `src/score-policy.ts`, which `publishHighScore` calls. Changing it to compare against `publishedBest ?? 0` makes the test fail.
 
 ## Coverage
 
@@ -31,7 +32,7 @@ Synced with the code at commit `302ea03`. Move this forward only after you confi
 | --- | --- |
 | `LoadBoard` | `loadLeaderboard` → `globalPersonalBest` |
 | `EndRun` | `finishRun` |
-| `CheckOwn` | `fetchPublishedBest` (own event; `null` on error or partial result) |
+| `CheckOwn` | `fetchPublishedBest` (own event; `null` on error or partial result), then `shouldPublishScore` |
 | `Publish` | `outbox.publish` in `publishHighScore` |
 
 ## Not covered
