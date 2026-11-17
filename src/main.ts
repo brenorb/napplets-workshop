@@ -9,6 +9,7 @@ import {
   type Subscription,
   type Theme,
 } from '@napplet/sdk';
+import { shouldPublishScore } from './score-policy';
 import './styles.css';
 
 const GAME_WIDTH = 720;
@@ -682,7 +683,7 @@ async function publishHighScore(): Promise<void> {
   elements.leaderboardStatus.textContent = 'Checking your published best…';
 
   const publishedBest = await fetchPublishedBest(pubkey);
-  if (publishedBest === null || runScore <= publishedBest) {
+  if (!shouldPublishScore(runScore, publishedBest)) {
     if (publishedBest !== null) globalPersonalBest = publishedBest;
     scorePublishing = false;
     setMessage(

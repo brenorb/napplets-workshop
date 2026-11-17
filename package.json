@@ -10,7 +10,8 @@
     "type-check": "tsc --noEmit",
     "verify": "pnpm type-check && pnpm build",
     "test:conformance": "pnpm build && napplet-conformance ./dist",
-    "test:conformance:ui": "napplet-conformance --ui . --exec \"vite build --watch\""
+    "test:conformance:ui": "napplet-conformance --ui . --exec \"vite build --watch\"",
+    "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "@napplet/sdk": "^0.12.0",
