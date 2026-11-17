@@ -638,6 +638,7 @@ async function loadLeaderboard(): Promise<void> {
       { kinds: [SCORE_KIND], '#d': [SCORE_D_TAG], limit: 100 },
       { relays: SCOREBOARD_RELAYS, limit: 100, timeoutMs: 6000 },
     );
+    if (result.error) throw new Error(result.error);
     leaderboardEntries = normalizeLeaderboard(result.events);
     globalPersonalBest = leaderboardEntries.find((entry) => entry.pubkey === currentPubkey)?.score ?? 0;
     elements.leaderboardStatus.textContent = result.incomplete
@@ -653,16 +654,56 @@ async function loadLeaderboard(): Promise<void> {
   }
 }
 
+/**
+ * The player's score as the relays hold it now, or null when they cannot say
+ * for sure. Scores are kind 30078 addressable events: a publish replaces the
+ * player's previous score, so publishing over an unknown best can lower it.
+ */
+async function fetchPublishedBest(pubkey: string): Promise<number | null> {
+  try {
+    const result = await outbox.query(
+      { kinds: [SCORE_KIND], authors: [pubkey], '#d': [SCORE_D_TAG], limit: 10 },
+      { relays: SCOREBOARD_RELAYS, limit: 10, timeoutMs: 6000 },
+    );
+    if (result.error || result.incomplete) return null;
+    return normalizeLeaderboard(result.events).find((entry) => entry.pubkey === pubkey)?.score ?? 0;
+  } catch {
+    return null;
+  }
+}
+
 async function publishHighScore(): Promise<void> {
   if (!currentPubkey || score <= globalPersonalBest || scorePublishing || !runtime.napplet?.outbox) return;
   scorePublishing = true;
+  const pubkey = currentPubkey;
+  const runScore = score;
+  const runLevel = level;
+  const runBricks = bricksBroken;
+  elements.leaderboardStatus.textContent = 'Checking your published best…';
+
+  const publishedBest = await fetchPublishedBest(pubkey);
+  if (publishedBest === null || runScore <= publishedBest) {
+    if (publishedBest !== null) globalPersonalBest = publishedBest;
+    scorePublishing = false;
+    setMessage(
+      'Run complete',
+      formatScore(runScore),
+      publishedBest === null
+        ? 'The board could not confirm your best, so this run was not published.'
+        : `Your global best is ${formatScore(publishedBest)}.`,
+    );
+    elements.leaderboardStatus.textContent =
+      publishedBest === null ? 'Could not reach the board. Your local best is safe.' : 'Your global best still stands.';
+    return;
+  }
+
   elements.leaderboardStatus.textContent = 'Signing your new personal best…';
 
   const payload: ScorePayload = {
     version: 1,
-    score,
-    level,
-    bricks: bricksBroken,
+    score: runScore,
+    level: runLevel,
+    bricks: runBricks,
     playedAt: Math.floor(Date.now() / 1000),
   };
 
@@ -680,12 +721,13 @@ async function publishHighScore(): Promise<void> {
       { relays: SCOREBOARD_RELAYS },
     );
     if (!result.ok) throw new Error(result.error ?? 'Score publish failed');
-    globalPersonalBest = score;
-    setMessage('New personal best', formatScore(score), 'Signed and published to the global board.');
+    // A new run may already have started; record the score that was published.
+    globalPersonalBest = Math.max(globalPersonalBest, payload.score);
+    setMessage('New personal best', formatScore(payload.score), 'Signed and published to the global board.');
     elements.leaderboardStatus.textContent = 'New personal best published.';
     await loadLeaderboard();
   } catch {
-    setMessage('Score saved locally', formatScore(score), 'The shell could not publish this run. Try refreshing the board later.');
+    setMessage('Score saved locally', formatScore(payload.score), 'The shell could not publish this run. Try refreshing the board later.');
     elements.leaderboardStatus.textContent = 'Could not publish this run. Your local best is safe.';
   } finally {
     scorePublishing = false;
